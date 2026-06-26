@@ -1,8 +1,6 @@
 # 🎬 LifeFrame — Real-Time World to Storybook Engine
 
-> Point your camera at anything. Pick a mood. Watch your world become a living, illustrated story.
-
-![LifeFrame Demo](demo.png)
+> Point your camera at anything. Pick a mood. Watch your world become a living, illustrated story
 
 ---
 
