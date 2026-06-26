@@ -9,7 +9,6 @@ import io
 
 # ── State ──────────────────────────────────────────────
 story_so_far = []
-current_genre = "fantasy"
 
 genre_styles = {
     "fantasy":  "fantasy art, magical, ethereal, detailed illustration, artstation",
@@ -29,12 +28,6 @@ pipe = pipe.to("cuda")
 print("✅ Ready!")
 
 # ── Core functions ───────────────────────────────────────
-def capture_frame():
-    cap = cv2.VideoCapture(0)
-    ret, frame = cap.read()
-    cap.release()
-    return frame if ret else None
-
 def frame_to_base64(frame):
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     pil_img = Image.fromarray(rgb)
@@ -42,26 +35,30 @@ def frame_to_base64(frame):
     pil_img.save(buf, format="JPEG")
     return base64.b64encode(buf.getvalue()).decode("utf-8")
 
-def describe_scene(frame_b64):
+def pil_to_base64_str(img):
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG")
+    return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+def describe_and_generate_story(frame_b64, genre):
+    """Combined call — describe scene AND generate story beat in one LLaVA call"""
+    history = " ".join(story_so_far[-3:]) if story_so_far else "This is the beginning of the story."
+    
+    prompt = f"""Look at this image carefully. You are a {genre} story writer.
+
+First, notice what you see: the objects, people, setting, mood, and atmosphere.
+
+Then, based on what you see AND this previous story context: "{history}"
+
+Write the NEXT 3-4 sentences of the {genre} story that naturally continues from what came before, incorporating elements from the current scene. Be vivid, dramatic, and creative. Output ONLY the story continuation, nothing else."""
+
     response = ollama.chat(
         model="llava:7b-v1.5-q4_0",
         messages=[{
             "role": "user",
-            "content": "Describe what you see in this image in 2-3 sentences. Focus on objects, people, mood and setting.",
+            "content": prompt,
             "images": [frame_b64]
         }]
-    )
-    return response['message']['content']
-
-def generate_story_beat(scene, genre):
-    history = " ".join(story_so_far[-3:])
-    prompt = f"""You are a {genre} story writer.
-Previous story: {history}
-New scene observed: {scene}
-Continue the story in 3-4 sentences. Be creative and dramatic. Only output the story, nothing else."""
-    response = ollama.chat(
-        model="llava:7b-v1.5-q4_0",
-        messages=[{"role": "user", "content": prompt}]
     )
     return response['message']['content']
 
@@ -75,26 +72,28 @@ def pil_to_base64(img):
     img.save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode("utf-8")
 
-def run_one_beat(genre):
+def run_one_beat(webcam_frame, genre):
     global story_so_far
 
-    frame = capture_frame()
-    if frame is None:
-        return "<p>Camera not found.</p>"
+    if webcam_frame is None:
+        return "<div style='color:white;padding:40px'>❌ No camera frame received. Allow camera access and try again.</div>"
 
+    # Convert gradio webcam output (numpy array) to cv2 format
+    frame = cv2.cvtColor(webcam_frame, cv2.COLOR_RGB2BGR)
     frame_b64 = frame_to_base64(frame)
-    scene = describe_scene(frame_b64)
-    beat = generate_story_beat(scene, genre)
-    story_so_far.append(beat)
-    art_img = generate_art(beat, genre)
 
-    # Convert art to base64 for embedding in HTML
+    # Single combined LLaVA call — faster!
+    beat = describe_and_generate_story(frame_b64, genre)
+    story_so_far.append(beat)
+
+    # Generate art
+    art_img = generate_art(beat, genre)
     art_b64 = pil_to_base64(art_img)
 
     # Build story HTML
     story_html = ""
     for i, b in enumerate(story_so_far):
-        story_html += f'<p><strong>Beat {i+1}:</strong> {b}</p>'
+        story_html += f'<p style="margin-bottom:16px"><strong style="color:#f0d080">Beat {i+1}:</strong> {b}</p>'
 
     html = f"""
     <div style="
@@ -105,7 +104,6 @@ def run_one_beat(genre):
         overflow: hidden;
         font-family: Georgia, serif;
     ">
-        <!-- Background Art -->
         <img src="data:image/png;base64,{art_b64}" style="
             position: absolute;
             top: 0; left: 0;
@@ -113,27 +111,25 @@ def run_one_beat(genre):
             object-fit: cover;
             z-index: 0;
         "/>
-
-        <!-- Dark overlay -->
         <div style="
             position: absolute;
             top: 0; left: 0;
             width: 100%; height: 100%;
-            background: linear-gradient(to bottom, rgba(0,0,0,0.3), rgba(0,0,0,0.85));
+            background: linear-gradient(to bottom, rgba(0,0,0,0.2), rgba(0,0,0,0.88));
             z-index: 1;
         "></div>
-
-        <!-- Story Text -->
         <div style="
             position: relative;
             z-index: 2;
             padding: 40px;
             color: white;
             text-shadow: 1px 1px 4px rgba(0,0,0,0.9);
+            line-height: 1.8;
+            font-size: 1.05em;
         ">
             <h2 style="
-                font-size: 1.8em;
-                margin-bottom: 20px;
+                font-size: 1.6em;
+                margin-bottom: 24px;
                 letter-spacing: 2px;
                 text-transform: uppercase;
                 color: #f0d080;
@@ -147,7 +143,7 @@ def run_one_beat(genre):
 def reset_story():
     global story_so_far
     story_so_far = []
-    return "<p style='color:white'>Story reset. Press <strong>Generate Next Beat</strong> to begin!</p>"
+    return "<div style='min-height:200px; display:flex; align-items:center; justify-content:center; opacity:0.5; color:white'>Story reset. Press Generate Next Beat to begin!</div>"
 
 # ── Gradio UI ────────────────────────────────────────────
 with gr.Blocks(title="LifeFrame") as demo:
@@ -159,21 +155,38 @@ with gr.Blocks(title="LifeFrame") as demo:
     """)
 
     with gr.Row():
-        genre_selector = gr.Dropdown(
-            choices=["fantasy", "horror", "romance", "sci-fi"],
-            value="fantasy",
-            label="🎭 Genre",
-            scale=1
-        )
-        generate_btn = gr.Button("📸 Generate Next Beat", variant="primary", scale=3)
-        reset_btn = gr.Button("🔄 Reset", scale=1)
+        with gr.Column(scale=1):
+            # Live webcam — always on, asks for permission automatically
+            webcam = gr.Image(
+            sources=["webcam"],
+            streaming=True,
+            label="📷 Live Camera"
+             )
+            genre_selector = gr.Dropdown(
+                choices=["fantasy", "horror", "romance", "sci-fi"],
+                value="fantasy",
+                label="🎭 Genre"
+            )
+            with gr.Row():
+                generate_btn = gr.Button("📸 Generate Next Beat", variant="primary")
+                reset_btn = gr.Button("🔄 Reset")
 
-    story_display = gr.HTML(
-        value="<div style='min-height:200px; display:flex; align-items:center; justify-content:center; opacity:0.5'>Press Generate Next Beat to begin your story...</div>"
+        with gr.Column(scale=2):
+            story_display = gr.HTML(
+                value="<div style='min-height:400px; display:flex; align-items:center; justify-content:center; opacity:0.5; color:white'>Allow camera access, then press Generate Next Beat...</div>"
+            )
+
+    generate_btn.click(
+        fn=run_one_beat,
+        inputs=[webcam, genre_selector],
+        outputs=[story_display]
     )
 
-    generate_btn.click(fn=run_one_beat, inputs=[genre_selector], outputs=[story_display])
-    reset_btn.click(fn=reset_story, inputs=[], outputs=[story_display])
+    reset_btn.click(
+        fn=reset_story,
+        inputs=[],
+        outputs=[story_display]
+    )
 
 if __name__ == "__main__":
     demo.launch()
