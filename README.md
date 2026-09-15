@@ -128,7 +128,8 @@ Stable Diffusion runs in 16-bit floating point precision, reducing VRAM usage by
 ---
 
 ## 📁 Project Structure
-lifeframe/
+
+lifeframe/n
 ├── app.py # Core pipeline (terminal version)
 ├── ui.py # Gradio web UI (main app)
 ├── requirements.txt # Python dependencies
@@ -148,7 +149,7 @@ lifeframe/
 
 ## 👤 Author
 
-**Ash** — 4th Year Computer Science Student  
+**Aashvi** — 4th Year Computer Science Student  
 Building at the intersection of Computer Vision, Generative AI, and real-time systems.
 
 ---
