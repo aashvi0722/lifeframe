@@ -85,7 +85,7 @@ LifeFrame is a real-time multimodal AI pipeline that transforms your live camera
 
 ### Installation
 
-```bash
+bash
 # Clone the repo
 git clone https://github.com/YOURUSERNAME/lifeframe.git
 cd lifeframe
@@ -99,13 +99,11 @@ pip install -r requirements.txt
 
 # Pull LLaVA model (~4GB)
 ollama pull llava:7b-v1.5-q4_0
-```
 
 ### Run
-
-```bash
+`bash
 python ui.py
-```
+
 
 Open **http://127.0.0.1:7860** → allow camera access → pick a genre → click **Generate Next Beat**
 
@@ -129,7 +127,7 @@ Stable Diffusion runs in 16-bit floating point precision, reducing VRAM usage by
 
 ## 📁 Project Structure
 
-lifeframe/n
+lifeframe 
 ├── app.py # Core pipeline (terminal version)
 ├── ui.py # Gradio web UI (main app)
 ├── requirements.txt # Python dependencies
